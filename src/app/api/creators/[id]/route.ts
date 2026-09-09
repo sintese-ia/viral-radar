@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { one, q } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -9,13 +9,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const { data, error } = await supabaseAdmin()
-    .from("creators")
-    .select("*")
-    .eq("id", id)
-    .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 404 });
-  return NextResponse.json(data);
+  const row = await one("select * from creators where id = $1", [id]);
+  if (!row) return NextResponse.json({ error: "não encontrado" }, { status: 404 });
+  return NextResponse.json(row);
 }
 
 // PATCH /api/creators/:id — approve/reject, notes, followers etc.
@@ -34,18 +30,25 @@ export async function PATCH(
     "notes",
     "approved",
     "profile_url",
-  ] as const;
-  const patch: Record<string, unknown> = {};
-  for (const key of allowed) if (key in body) patch[key] = body[key];
-
-  const { data, error } = await supabaseAdmin()
-    .from("creators")
-    .update(patch)
-    .eq("id", id)
-    .select()
-    .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data);
+  ];
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  for (const key of allowed) {
+    if (key in body) {
+      values.push(body[key]);
+      sets.push(`${key} = $${values.length}`);
+    }
+  }
+  if (sets.length === 0) {
+    return NextResponse.json({ error: "nada para atualizar" }, { status: 400 });
+  }
+  values.push(id);
+  const row = await one(
+    `update creators set ${sets.join(", ")} where id = $${values.length} returning *`,
+    values,
+  );
+  if (!row) return NextResponse.json({ error: "não encontrado" }, { status: 404 });
+  return NextResponse.json(row);
 }
 
 // DELETE /api/creators/:id
@@ -54,7 +57,6 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const { error } = await supabaseAdmin().from("creators").delete().eq("id", id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  await q("delete from creators where id = $1", [id]);
   return NextResponse.json({ ok: true });
 }

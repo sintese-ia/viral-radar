@@ -1,39 +1,57 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { q } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
+const SORTS: Record<string, string> = {
+  outlier: "v.outlier_score desc nulls last",
+  views: "v.views desc nulls last",
+  engagement: "v.engagement_rate desc nulls last",
+  newest: "v.published_at desc nulls last",
+};
+
 // GET /api/videos?creator_id=&status=&sort=&top=
-// sort: outlier (default) | views | engagement | newest
 export async function GET(req: NextRequest) {
   const sp = new URL(req.url).searchParams;
   const creatorId = sp.get("creator_id");
   const status = sp.get("status");
-  const sort = sp.get("sort") ?? "outlier";
+  const sort = SORTS[sp.get("sort") ?? "outlier"] ?? SORTS.outlier;
   const top = sp.get("top") ? Number(sp.get("top")) : null;
 
-  let q = supabaseAdmin().from("videos").select("*, creators(name, handle, followers_count)");
-  if (creatorId) q = q.eq("creator_id", creatorId);
-  if (status) q = q.eq("status", status);
-
-  switch (sort) {
-    case "views":
-      q = q.order("views", { ascending: false, nullsFirst: false });
-      break;
-    case "engagement":
-      q = q.order("engagement_rate", { ascending: false, nullsFirst: false });
-      break;
-    case "newest":
-      q = q.order("published_at", { ascending: false, nullsFirst: false });
-      break;
-    default:
-      q = q.order("outlier_score", { ascending: false, nullsFirst: false });
+  const where: string[] = [];
+  const values: unknown[] = [];
+  if (creatorId) {
+    values.push(creatorId);
+    where.push(`v.creator_id = $${values.length}`);
+  }
+  if (status) {
+    values.push(status);
+    where.push(`v.status = $${values.length}`);
+  }
+  if (top) {
+    values.push(top);
+    where.push(`v.viral_rank is not null and v.viral_rank <= $${values.length}`);
   }
 
-  // top N = corte por viral_rank (posição dentro do creator)
-  if (top) q = q.lte("viral_rank", top);
-
-  const { data, error } = await q.limit(1000);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data);
+  try {
+    const rows = await q(
+      `select v.*,
+              v.views::float as views, v.likes::float as likes, v.comments::float as comments,
+              v.shares::float as shares, v.plays::float as plays,
+              v.outlier_score::float as outlier_score,
+              v.engagement_rate::float as engagement_rate,
+              v.view_to_follower_ratio::float as view_to_follower_ratio,
+              json_build_object('name', c.name, 'handle', c.handle,
+                                'followers_count', c.followers_count) as creators
+       from videos v
+       join creators c on c.id = v.creator_id
+       ${where.length ? "where " + where.join(" and ") : ""}
+       order by ${sort}
+       limit 1000`,
+      values,
+    );
+    return NextResponse.json(rows);
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }

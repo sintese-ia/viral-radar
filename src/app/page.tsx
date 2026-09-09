@@ -16,7 +16,13 @@ export default function CreatorsPage() {
 
   const load = useCallback(async () => {
     const res = await fetch("/api/creators");
-    if (res.ok) setCreators(await res.json());
+    if (res.ok) {
+      setCreators(await res.json());
+    } else {
+      setCreators([]);
+      const body = await res.json().catch(() => null);
+      setError(body?.error ?? `API /creators falhou (${res.status})`);
+    }
   }, []);
 
   useEffect(() => {

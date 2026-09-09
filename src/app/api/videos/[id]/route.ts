@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { one } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -10,25 +10,33 @@ export async function PATCH(
 ) {
   const { id } = await params;
   const body = await req.json();
-  const patch: Record<string, unknown> = {};
+  const sets: string[] = [];
+  const values: unknown[] = [];
 
   if ("status" in body) {
     const status = body.status;
     if (!["pending", "approved", "rejected", "analyzed"].includes(status)) {
       return NextResponse.json({ error: "status inválido" }, { status: 400 });
     }
-    patch.status = status;
+    values.push(status);
+    sets.push(`status = $${values.length}`);
     // `approved` espelha o status para consultas simples
-    patch.approved = status === "approved" ? true : status === "rejected" ? false : null;
+    values.push(status === "approved" ? true : status === "rejected" ? false : null);
+    sets.push(`approved = $${values.length}`);
   }
-  if ("notes" in body) patch.notes = body.notes || null;
+  if ("notes" in body) {
+    values.push(body.notes || null);
+    sets.push(`notes = $${values.length}`);
+  }
+  if (sets.length === 0) {
+    return NextResponse.json({ error: "nada para atualizar" }, { status: 400 });
+  }
 
-  const { data, error } = await supabaseAdmin()
-    .from("videos")
-    .update(patch)
-    .eq("id", id)
-    .select()
-    .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data);
+  values.push(id);
+  const row = await one(
+    `update videos set ${sets.join(", ")} where id = $${values.length} returning *`,
+    values,
+  );
+  if (!row) return NextResponse.json({ error: "não encontrado" }, { status: 404 });
+  return NextResponse.json(row);
 }

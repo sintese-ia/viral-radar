@@ -1,7 +1,9 @@
 -- Viral Radar — migration inicial
--- Rodar no SQL Editor do Supabase (ou via supabase db push).
+-- Banco: Postgres do Easypanel (cells-postgres / dadoscells), schema próprio.
+-- Rodar como user DDL (dadoscells). Idempotente.
 
-create extension if not exists "pgcrypto";
+create schema if not exists viral_radar;
+set search_path to viral_radar;
 
 -- ============================================================
 -- CREATORS
@@ -91,7 +93,7 @@ create table if not exists video_analysis (
 -- ============================================================
 -- updated_at automático
 -- ============================================================
-create or replace function set_updated_at()
+create or replace function viral_radar.set_updated_at()
 returns trigger language plpgsql as $$
 begin
   new.updated_at = now();
@@ -100,18 +102,20 @@ end $$;
 
 drop trigger if exists creators_updated_at on creators;
 create trigger creators_updated_at before update on creators
-  for each row execute function set_updated_at();
+  for each row execute function viral_radar.set_updated_at();
 
 drop trigger if exists videos_updated_at on videos;
 create trigger videos_updated_at before update on videos
-  for each row execute function set_updated_at();
+  for each row execute function viral_radar.set_updated_at();
 
 drop trigger if exists video_analysis_updated_at on video_analysis;
 create trigger video_analysis_updated_at before update on video_analysis
-  for each row execute function set_updated_at();
+  for each row execute function viral_radar.set_updated_at();
 
--- Ferramenta interna acessada só pelo server (service role) — RLS ligado
--- com nenhuma policy = anon não lê nada, service role ignora RLS.
-alter table creators enable row level security;
-alter table videos enable row level security;
-alter table video_analysis enable row level security;
+-- ============================================================
+-- Grants para o user DML que o app usa (claude_b2b)
+-- ============================================================
+grant usage on schema viral_radar to claude_b2b;
+grant select, insert, update, delete on all tables in schema viral_radar to claude_b2b;
+alter default privileges in schema viral_radar
+  grant select, insert, update, delete on tables to claude_b2b;
