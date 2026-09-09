@@ -31,12 +31,11 @@ cp .env.example .env.local   # DATABASE_URL + APIFY_API_TOKEN
 npm run dev                  # http://localhost:3000
 ```
 
-- `DATABASE_URL`: user `claude_b2b` (DML) — valor em `~/Documents/cells-crm-app/.env.local`, trocando apenas o path se preciso. Host local: `easypanel.sinteseia.com.br:5432`.
-- `APIFY_API_TOKEN`: ver `cells/cells-infra/apis-externas.md` no vault MAGNUS.
+Os valores de `DATABASE_URL` (user DML) e `APIFY_API_TOKEN` moram nos cofres internos — ver a doc do projeto no vault MAGNUS (`sinteseia/08-viral-radar/README.md`).
 
 ## 3. Migrations
 
-`supabase/migrations/001_init.sql` (nome de pasta é herança do rascunho Supabase). Rodar como user DDL (`dadoscells`, URL em `~/Documents/cells-crm-app/.env.admin.local`) — sem `psql` na máquina, usar `python3` + `psycopg2`. Idempotente. Cria o schema `viral_radar`, as 3 tabelas, triggers de `updated_at` e grants pro `claude_b2b`. **Rodada em 09/09/2026 — banco já está de pé.**
+`supabase/migrations/001_init.sql` (nome de pasta é herança do rascunho Supabase). Rodar com o user DDL do banco (via `python3` + `psycopg2`; não há `psql` na máquina). Idempotente. Cria o schema `viral_radar`, as 3 tabelas, triggers de `updated_at` e grants pro `claude_b2b`. **Rodada em 09/09/2026 — banco já está de pé.**
 
 ## 4. Como usar
 
@@ -64,7 +63,7 @@ Vídeos sem views válidas (null/0) ficam fora da mediana e sem score/rank. Ex.:
 Padrão do `cells-analytics`: Easypanel builda o `Dockerfile` a partir do repo GitHub (`sintese-ia/viral-radar`, branch `main`), projeto `sintese`. Env vars do serviço:
 
 ```
-DATABASE_URL=postgresql://claude_b2b:...@cells-postgres:5432/dadoscells   # rede interna
+DATABASE_URL=postgresql://<user_dml>:...@bancodados:5432/dadoscells   # rede interna
 APIFY_API_TOKEN=...
 BASIC_AUTH_USER=...
 BASIC_AUTH_PASS=...
